@@ -1,0 +1,32 @@
+services:
+  web:
+    build: ./web
+    environment:
+      SERVICE_URL: http://service:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      service:
+        condition: service_healthy
+
+  service:
+    build: ./service
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.2
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+volumes:
+  qdrant-data:

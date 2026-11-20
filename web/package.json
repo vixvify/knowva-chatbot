@@ -1,0 +1,26 @@
+{
+  "name": "knowa-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^16",
+    "react": "^19.2",
+    "react-dom": "^19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16",
+    "typescript": "^5"
+  }
+}

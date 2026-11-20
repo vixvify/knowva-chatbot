@@ -1,0 +1,59 @@
+name: Project checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Build and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify web lint and types
+        run: |
+          docker build --target build --tag knowa-web:ci-checks ./web
+          docker run --rm knowa-web:ci-checks sh -ec 'npm run lint && npm run typecheck'
+
+      - name: Build and start the Compose stack
+        run: docker compose up --build --wait --wait-timeout 90
+
+      - name: Check web to API connectivity
+        run: |
+          web_address=$(docker compose port web 3000)
+          curl --fail --silent --show-error --retry 10 --retry-connrefused \
+            --max-time 5 "http://$web_address/" > "$RUNNER_TEMP/knowa-home.html"
+          grep -q 'API status:.*Connected' "$RUNNER_TEMP/knowa-home.html"
+
+      - name: Check API to Qdrant connectivity
+        run: |
+          qdrant_address=$(docker compose port qdrant 6333)
+          curl --fail --silent --show-error --retry 10 --retry-connrefused \
+            --max-time 5 "http://$qdrant_address/readyz"
+          docker compose exec -T service python - <<'PY'
+          import os
+
+          from qdrant_client import QdrantClient
+
+          client = QdrantClient(url=os.environ["QDRANT_URL"], timeout=5)
+          try:
+              client.get_collections()
+          finally:
+              client.close()
+          PY
+
+      - name: Print Compose logs after a failure
+        if: failure()
+        run: docker compose logs --no-color --tail=100
+
+      - name: Tear down the CI stack
+        if: always()
+        run: docker compose down --volumes
