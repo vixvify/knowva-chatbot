@@ -9,12 +9,13 @@ import type { Ref } from "react";
 
 type ComposerProps = {
   draft: string;
+  pending: boolean;
   inputRef: Ref<HTMLTextAreaElement>;
   onChange: (draft: string) => void;
   onSend: () => void;
 };
 
-export function ChatComposer({ draft, inputRef, onChange, onSend }: ComposerProps) {
+export function ChatComposer({ draft, pending, inputRef, onChange, onSend }: ComposerProps) {
   return (
     <Box component="footer" sx={{ flexShrink: 0, bgcolor: "background.default", px: { xs: 2, sm: 3 }, pt: 1.5, pb: "max(16px, env(safe-area-inset-bottom))" }}>
       <Box sx={{ width: "100%", maxWidth: 720, mx: "auto" }}>
@@ -61,7 +62,7 @@ export function ChatComposer({ draft, inputRef, onChange, onSend }: ComposerProp
               <IconButton
                 type="submit"
                 aria-label="Send message"
-                disabled={!draft.trim()}
+                disabled={pending || !draft.trim()}
                 sx={{
                   width: 42,
                   height: 42,
@@ -78,7 +79,7 @@ export function ChatComposer({ draft, inputRef, onChange, onSend }: ComposerProp
           </Tooltip>
         </Paper>
         <Typography sx={{ color: "text.secondary", fontSize: 11, textAlign: "center", mt: 1.5 }}>
-          UI preview · Messages aren’t saved.
+          Messages aren’t saved.
         </Typography>
       </Box>
     </Box>
