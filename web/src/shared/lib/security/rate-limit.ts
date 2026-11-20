@@ -17,8 +17,8 @@ function getLimiter(group: RateLimitGroup): Ratelimit | null {
     limiter = new Ratelimit({
       redis: new Redis(settings),
       limiter: Ratelimit.slidingWindow(policy.requests, policy.window),
-      prefix: `bangmod:ratelimit:${group}`,
-      timeout: 1500,
+      prefix: `${settings.prefix}:${group}`,
+      timeout: settings.timeoutMs,
       analytics: false,
     });
     instances.set(group, limiter);
@@ -55,7 +55,7 @@ export async function enforceRateLimit(
       throw new AppError("Service temporarily unavailable", 503);
     console.error(
       "Rate limit unavailable",
-      error instanceof Error ? error.name : "unknown",
+      error instanceof Error ? error.name : "NonError",
     );
     return;
   }

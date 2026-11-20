@@ -5,20 +5,22 @@ type HttpFailure = {
   retryAfter?: number;
 };
 
-function isHttpFailure(error: unknown): error is HttpFailure {
+type ErrorValue = Error | null | undefined;
+
+function isHttpFailure(error: ErrorValue): error is Error & HttpFailure {
   return error instanceof Error && error.name === "HttpError";
 }
 
-export function getHttpErrorStatus(error: unknown): number | undefined {
+export function getHttpErrorStatus(error: ErrorValue): number | undefined {
   return isHttpFailure(error) ? error.status : undefined;
 }
 
-export function getHttpErrorCode(error: unknown): string | undefined {
+export function getHttpErrorCode(error: ErrorValue): string | undefined {
   return isHttpFailure(error) ? error.statusCode : undefined;
 }
 
 export function getErrorMessage(
-  error: unknown,
+  error: ErrorValue,
   fallback: string,
   overrides: Partial<Record<number, string>> = {},
 ): string {

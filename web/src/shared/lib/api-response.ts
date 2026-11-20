@@ -12,7 +12,7 @@ export function successResponse<T>(data: T, status = 200) {
   );
 }
 
-export function errorResponse(error: unknown) {
+export function errorResponse(error: Error | null) {
   if (error instanceof AppError) {
     return NextResponse.json(
       {

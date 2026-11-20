@@ -3,6 +3,13 @@ import { z } from "zod";
 import { AppError } from "../errors/app-error";
 
 const NodeEnvironmentSchema = z.enum(["development", "test", "production"]);
+const HttpUrlSchema = z.url({ protocol: /^https?$/ });
+const TimeoutSchema = z.coerce.number().int().positive().max(120_000);
+const ChatServiceEnvironmentSchema = z.object({
+  url: HttpUrlSchema,
+  path: z.string().regex(/^\/(?!\/)[^\\]*$/),
+  timeoutMs: TimeoutSchema,
+});
 
 const ApiEnvironmentSchema = z.object({
   url: z
@@ -23,11 +30,11 @@ const ResendEnvironmentSchema = z.object({
 });
 
 const InitialAdminEmailSchema = z.string().trim().toLowerCase().email();
-const NEON_TIMEOUT_SECONDS = 15;
 
 export type ResendConfig = z.infer<typeof ResendEnvironmentSchema>;
 
 function getApiUrl() {
+  if (!process.env.NEXT_PUBLIC_API_URL) return "";
   const result = ApiEnvironmentSchema.safeParse({
     url: process.env.NEXT_PUBLIC_API_URL,
   });
@@ -39,21 +46,25 @@ function getApiUrl() {
   return result.data.url;
 }
 
-function getDatabaseUrl(): string | undefined {
-  const value = process.env.DATABASE_URL;
-  if (!value || !URL.canParse(value)) return value;
+function getDatabaseUrl(): string {
+  const result = z.url({ protocol: /^postgres(?:ql)?$/ }).safeParse(process.env.DATABASE_URL);
+  if (!result.success) throw new AppError("DATABASE_URL is missing or invalid.", 500);
+  const value = result.data;
 
   const url = new URL(value);
   if (!url.hostname.endsWith(".neon.tech")) return value;
+  const neonTimeout = process.env.DATABASE_NEON_MIN_TIMEOUT_SECONDS;
+  if (!neonTimeout) return value;
+  const minimumTimeout = z.coerce.number().int().positive().parse(neonTimeout);
 
   for (const parameter of ["connect_timeout", "pool_timeout"]) {
     const configured = Number(url.searchParams.get(parameter) || NaN);
     if (
       !Number.isInteger(configured) ||
       configured < 0 ||
-      (configured > 0 && configured < NEON_TIMEOUT_SECONDS)
+      (configured > 0 && configured < minimumTimeout)
     ) {
-      url.searchParams.set(parameter, String(NEON_TIMEOUT_SECONDS));
+      url.searchParams.set(parameter, String(minimumTimeout));
     }
   }
 
@@ -62,23 +73,16 @@ function getDatabaseUrl(): string | undefined {
 
 function getAuthSecret() {
   const secret = process.env.BETTER_AUTH_SECRET?.trim();
-  if (
-    process.env.NODE_ENV === "production" &&
-    (!secret || secret.length < 32)
-  ) {
-    throw new Error(
-      "BETTER_AUTH_SECRET must contain at least 32 characters in production",
-    );
+  if (!secret || secret.length < 32) {
+    throw new AppError("BETTER_AUTH_SECRET must contain at least 32 characters.", 500);
   }
-  return secret || "development-fallback-secret-key-min-32-chars";
+  return secret;
 }
 
 function getAuthUrl() {
-  return (
-    process.env.BETTER_AUTH_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:3000"
-  );
+  const result = HttpUrlSchema.safeParse(process.env.BETTER_AUTH_URL);
+  if (!result.success) throw new AppError("BETTER_AUTH_URL is missing or invalid.", 500);
+  return result.data;
 }
 
 function getGoogleOAuthConfig() {
@@ -116,8 +120,14 @@ function getResendConfig(): ResendConfig {
 
 export const config = {
   get trustedOrigins(): string[] {
+    const authUrl = new URL(getAuthUrl());
+    const localHosts = ["localhost", "127.0.0.1", "[::1]"];
+    const localOrigins = localHosts.includes(authUrl.hostname)
+      ? localHosts.map((host) => `${authUrl.protocol}//${host}${authUrl.port ? `:${authUrl.port}` : ""}`)
+      : [];
     const values = [
-      getAuthUrl(),
+      authUrl.origin,
+      ...localOrigins,
       ...(process.env.AUTH_TRUSTED_ORIGINS?.split(",") ?? []),
     ];
     return [
@@ -126,7 +136,7 @@ export const config = {
           const url = new URL(value.trim());
           if (
             url.protocol !== "https:" &&
-            !(url.protocol === "http:" && !config.isProduction)
+            !(url.protocol === "http:" && (!config.isProduction || localHosts.includes(url.hostname)))
           ) {
             throw new Error("Trusted origins must use HTTPS in production");
           }
@@ -136,7 +146,7 @@ export const config = {
     ];
   },
 
-  get rateLimitRedis(): { url: string; token: string } | null {
+  get rateLimitRedis(): { url: string; token: string; prefix: string; timeoutMs: number } | null {
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
     if (!url && !token) return null;
@@ -144,7 +154,9 @@ export const config = {
       throw new Error("Upstash Redis configuration is incomplete");
     if (new URL(url).protocol !== "https:")
       throw new Error("Upstash Redis URL must use HTTPS");
-    return { url, token };
+    const prefix = z.string().trim().min(1).parse(process.env.RATE_LIMIT_PREFIX);
+    const timeoutMs = TimeoutSchema.parse(process.env.RATE_LIMIT_TIMEOUT_MS);
+    return { url, token, prefix, timeoutMs };
   },
 
   get isVercel(): boolean {
@@ -155,6 +167,20 @@ export const config = {
   },
   get apiUrl() {
     return getApiUrl();
+  },
+  get httpTimeoutMs() {
+    const value = process.env.NEXT_PUBLIC_HTTP_TIMEOUT_MS;
+    if (value === undefined) return undefined;
+    return TimeoutSchema.parse(value);
+  },
+  get chatService() {
+    const result = ChatServiceEnvironmentSchema.safeParse({
+      url: process.env.SERVICE_URL,
+      path: process.env.CHAT_SERVICE_PATH,
+      timeoutMs: process.env.CHAT_SERVICE_TIMEOUT_MS,
+    });
+    if (!result.success) throw new AppError("The chat service configuration is missing or invalid.", 500);
+    return result.data;
   },
 
   get databaseUrl() {

@@ -1,13 +1,23 @@
 import { useRef, useState } from "react";
+import type { ChatMessageResult } from "../chat.schema";
+import { sendChatMessage } from "../server/chat.actions";
+
+export type ChatMessage = {
+  id: number;
+  text: string;
+  result?: ChatMessageResult;
+};
 
 export type Conversation = {
   id: number;
   title: string;
-  messages: string[];
+  messages: ChatMessage[];
 };
 
 export function useChat() {
   const nextId = useRef(1);
+  const sending = useRef(false);
+  const [pending, setPending] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
@@ -20,22 +30,36 @@ export function useChat() {
     setDraft("");
   }
 
-  function sendMessage() {
-    const message = draft.trim();
-    if (!message) return;
+  async function sendMessage() {
+    const text = draft.trim();
+    if (!text || sending.current) return;
 
-    if (activeChat) {
-      const updated = { ...activeChat, messages: [...activeChat.messages, message] };
-      setConversations((current) => [updated, ...current.filter(({ id }) => id !== updated.id)]);
-    } else {
-      const id = nextId.current++;
-      const title = message.replace(/\s+/g, " ");
-      setConversations((current) => [{ id, title, messages: [message] }, ...current]);
-      setActiveId(id);
-    }
-
+    sending.current = true;
+    setPending(true);
+    const conversationId = activeChat?.id ?? nextId.current++;
+    const message = { id: nextId.current++, text };
+    const updated = {
+      id: conversationId,
+      title: activeChat?.title ?? text.replace(/\s+/g, " "),
+      messages: [...(activeChat?.messages ?? []), message],
+    };
+    setConversations((current) => [updated, ...current.filter(({ id }) => id !== conversationId)]);
+    setActiveId(conversationId);
     setDraft("");
+
+    let result: ChatMessageResult;
+    try {
+      result = await sendChatMessage({ message: text });
+    } catch {
+      result = { error: "Could not send your message. Try again." };
+    } finally {
+      sending.current = false;
+      setPending(false);
+    }
+    setConversations((current) => current.map((conversation) => conversation.id === conversationId
+      ? { ...conversation, messages: conversation.messages.map((item) => item.id === message.id ? { ...item, result } : item) }
+      : conversation));
   }
 
-  return { activeChat, conversations, draft, selectChat, setDraft, sendMessage };
+  return { activeChat, conversations, draft, pending, selectChat, setDraft, sendMessage };
 }

@@ -2,8 +2,9 @@ import MenuRounded from "@mui/icons-material/MenuRounded";
 import Stack from "@mui/material/Stack";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
+import type { ReactNode } from "react";
 
-export function ChatHeader({ onOpenMenu, title }: { onOpenMenu: () => void; title?: string }) {
+export function ChatHeader({ authActions, onOpenMenu, title }: { authActions: ReactNode; onOpenMenu: () => void; title?: string }) {
   return (
     <Stack
       component="header"
@@ -14,7 +15,8 @@ export function ChatHeader({ onOpenMenu, title }: { onOpenMenu: () => void; titl
       <IconButton aria-label="Open chat history" onClick={onOpenMenu} sx={{ display: { md: "none" } }}>
         <MenuRounded />
       </IconButton>
-      <Typography noWrap sx={{ fontSize: 14, fontWeight: 800 }}>{title ?? "New chat"}</Typography>
+      <Typography noWrap sx={{ fontSize: 14, fontWeight: 800, flex: 1 }}>{title ?? "New chat"}</Typography>
+      {authActions}
     </Stack>
   );
 }
