@@ -30,8 +30,8 @@ jobs:
         run: |
           web_address=$(docker compose port web 3000)
           curl --fail --silent --show-error --retry 10 --retry-connrefused \
-            --max-time 5 "http://$web_address/" > "$RUNNER_TEMP/knowa-home.html"
-          grep -q 'API status:.*Connected' "$RUNNER_TEMP/knowa-home.html"
+            --max-time 5 "http://$web_address/" --output /dev/null
+          curl --fail --silent --show-error --max-time 5 "http://$web_address/api/health"
 
       - name: Check API to Qdrant connectivity
         run: |
