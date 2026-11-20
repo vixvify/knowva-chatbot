@@ -24,14 +24,21 @@ jobs:
           docker run --rm knowa-web:ci-checks sh -ec 'npm run lint && npm run typecheck'
 
       - name: Build and start the Compose stack
-        run: docker compose up --build --wait --wait-timeout 90
+        run: |
+          cp .env.example .env
+          BETTER_AUTH_SECRET=$(openssl rand -hex 32)
+          export BETTER_AUTH_SECRET
+          docker compose up --build --wait --wait-timeout 90
 
-      - name: Check web to API connectivity
+      - name: Check web pages and FastAPI connectivity
         run: |
           web_address=$(docker compose port web 3000)
           curl --fail --silent --show-error --retry 10 --retry-connrefused \
             --max-time 5 "http://$web_address/" --output /dev/null
-          curl --fail --silent --show-error --max-time 5 "http://$web_address/api/health"
+          for page in login register; do
+            curl --fail --silent --show-error --max-time 5 "http://$web_address/$page" --output /dev/null
+          done
+          docker compose exec -T web node -e 'fetch(new URL("/health", process.env.SERVICE_URL), { signal: AbortSignal.timeout(5000) }).then(async (response) => { if (!response.ok || (await response.json()).status !== "ok") process.exitCode = 1; }).catch(() => { process.exitCode = 1; })'
 
       - name: Check API to Qdrant connectivity
         run: |
@@ -52,8 +59,10 @@ jobs:
 
       - name: Print Compose logs after a failure
         if: failure()
-        run: docker compose logs --no-color --tail=100
+        run: |
+          if [ -f .env ]; then docker compose logs --no-color --tail=100; fi
 
       - name: Tear down the CI stack
         if: always()
-        run: docker compose down --volumes
+        run: |
+          if [ -f .env ]; then docker compose down --volumes; fi
